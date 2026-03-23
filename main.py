@@ -70,6 +70,9 @@ async def ask_questions(channel, user, ticket_type):
 
 
 # ================= CONTROLS =================
+
+        if not staff_role or staff_role not in interaction.user.roles:
+        # ================= CONTROLS =================
 class TicketControls(discord.ui.View):
     def __init__(self, user_id, ticket_type):
         super().__init__(timeout=None)
@@ -77,57 +80,63 @@ class TicketControls(discord.ui.View):
         self.user_id = user_id
         self.ticket_type = ticket_type
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, emoji="🟢")
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, emoji="🟢", custom_id="ticket_claim")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-
         if self.claimed_by:
             await interaction.response.send_message("❌ Already claimed!", ephemeral=True)
             return
-
         if not staff_role or staff_role not in interaction.user.roles:
             await interaction.response.send_message("❌ Only sellers can claim!", ephemeral=True)
             return
-
         self.claimed_by = interaction.user
         await interaction.response.send_message(f"✅ Claimed by {interaction.user.mention}")
 
-    @discord.ui.button(label="Add User", style=discord.ButtonStyle.blurple, emoji="👤")
+    @discord.ui.button(label="Add User", style=discord.ButtonStyle.blurple, emoji="👤", custom_id="ticket_add_user")
     async def add_user(self, interaction: discord.Interaction, button: discord.ui.Button):
         staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-
         if not staff_role or staff_role not in interaction.user.roles:
             await interaction.response.send_message("❌ Only sellers can add users!", ephemeral=True)
             return
-
         await interaction.response.send_message("👤 Mention user to add:", ephemeral=True)
 
         def check(m):
             return m.author == interaction.user and m.channel == interaction.channel
 
         msg = await bot.wait_for("message", check=check)
-
         if msg.mentions:
             user = msg.mentions[0]
             await interaction.channel.set_permissions(user, view_channel=True, send_messages=True)
             await interaction.channel.send(f"✅ {user.mention} added")
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒")
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket_close")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
         staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-
         if not staff_role or staff_role not in interaction.user.roles:
             await interaction.response.send_message("❌ Only sellers can close!", ephemeral=True)
             return
-
         await interaction.channel.send("🔒 Closing ticket...")
-        # Remove from open_tickets
+        # Remove ticket from open_tickets
         if self.user_id in open_tickets and self.ticket_type in open_tickets[self.user_id]:
             open_tickets[self.user_id].remove(self.ticket_type)
-            if len(open_tickets[self.user_id]) == 0:
+            if not open_tickets[self.user_id]:
                 del open_tickets[self.user_id]
         await interaction.channel.delete()
 
+
+# ================= DROPDOWN =================
+class TicketDropdown(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="🛒 Buy Products", description="Purchase items", emoji="🛒"),
+            discord.SelectOption(label="❓ Support", description="Get help", emoji="❓"),
+            discord.SelectOption(label="🤝 Partnership", description="Business deals", emoji="🤝"),
+        ]
+        super().__init__(placeholder="🎫 Choose your ticket type", options=options, custom_id="ticket_dropdown")
+
+    async def callback(self, interaction: discord.Interaction):
+        # existing ticket creation logic remains
+        ...
 
 # ================= DROPDOWN =================
 class TicketDropdown(discord.ui.Select):
