@@ -61,13 +61,16 @@ class TicketControls(discord.ui.View):
         await interaction.channel.delete()
 
 
-# ================= TICKET BUTTON =================
-class TicketView(discord.ui.View):
+# ================= DROPDOWN =================
+class TicketDropdown(discord.ui.Select):
     def __init__(self):
-        super().__init__(timeout=None)
+        options = [
+            discord.SelectOption(label="🛒 Buy Products", description="Purchase items"),
+            discord.SelectOption(label="❓ Support", description="Get help"),
+        ]
+        super().__init__(placeholder="Select ticket type", options=options)
 
-    @discord.ui.button(label="Open Ticket", style=discord.ButtonStyle.green)
-    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
         user = interaction.user
 
@@ -89,12 +92,10 @@ class TicketView(discord.ui.View):
         embed = discord.Embed(
             title="🎫 Nᴇxʀʏɴ Ticket",
             description=(
-                f"{user.mention} welcome!\n\n"
-                "Please wait for a seller to assist you.\n\n"
-                "Use buttons below:\n"
-                "• Claim → Seller takes ticket\n"
-                "• Add User → Add someone\n"
-                "• Close → Close ticket"
+                f"{user.mention} opened a ticket\n\n"
+                f"📌 Type: {self.values[0]}\n\n"
+                "Please wait for a seller.\n"
+                "Use buttons below to manage ticket."
             ),
             color=0x2b2d31
         )
@@ -112,6 +113,12 @@ class TicketView(discord.ui.View):
         await interaction.response.send_message(f"✅ Ticket created: {channel.mention}", ephemeral=True)
 
 
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketDropdown())
+
+
 # ================= PANEL =================
 @bot.command()
 async def panel(ctx):
@@ -127,7 +134,7 @@ async def panel(ctx):
             "🤖 Bots • 🎨 Decorations\n\n"
 
             "⚡ Cheapest • Fast • Trusted\n\n"
-            "🔥 Click below to open ticket"
+            "👇 Select ticket type below"
         ),
         color=0x2b2d31
     )
