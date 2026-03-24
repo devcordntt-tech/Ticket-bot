@@ -9,11 +9,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 TOKEN = os.getenv("TOKEN")
 STAFF_ROLE_NAME = "S E L L E R"
 
-# ================= TRACK OPEN TICKETS =================
-# {user_id: [ticket_type1, ticket_type2, ...]}
 open_tickets = {}
 
-# ================= QUESTIONS (EMBED STYLE) =================
+# ================= QUESTIONS =================
 async def ask_questions(channel, user, ticket_type):
     questions_map = {
         "🛒 Buy Products": [
@@ -24,26 +22,25 @@ async def ask_questions(channel, user, ticket_type):
         ],
         "❓ Support": [
             "What issue are you facing?",
-            "Provide proof/screenshot if possible",
+            "Provide proof if possible",
             "Explain clearly"
         ],
         "🤝 Partnership": [
             "What kind of partnership?",
-            "Your server/user stats?",
-            "Details of proposal"
+            "Your stats?",
+            "Details"
         ]
     }
 
-    questions = questions_map.get(ticket_type, [])
     answers = []
 
-    for i, q in enumerate(questions, start=1):
+    for i, q in enumerate(questions_map.get(ticket_type, []), start=1):
         embed = discord.Embed(
             title=f"📩 Question {i}",
-            description=f"{user.mention}\n\n**{q}**",
-            color=0x1abc9c
+            description=f"╭───────────────╮\n{user.mention}\n\n**{q}**\n╰───────────────╯",
+            color=0x2b2d31
         )
-        embed.set_footer(text="Reply below • You have 5 minutes")
+        embed.set_footer(text="Reply below • Timeout: 5 mins")
         await channel.send(embed=embed)
 
         def check(m):
@@ -53,74 +50,86 @@ async def ask_questions(channel, user, ticket_type):
             msg = await bot.wait_for("message", check=check, timeout=300)
             answers.append((q, msg.content))
         except asyncio.TimeoutError:
-            await channel.send("⏰ Timed out. Please reopen ticket.")
+            await channel.send("⏰ Time expired.")
             return
 
-    summary_text = "\n\n".join([f"**{q}**\n{a}" for q, a in answers])
+    summary = "\n\n".join([f"**{q}**\n➜ {a}" for q, a in answers])
 
     embed = discord.Embed(
         title="📋 Ticket Summary",
-        description=summary_text,
-        color=0x1abc9c
+        description=f"╭───────────────╮\n{summary}\n╰───────────────╯",
+        color=0x2b2d31
     )
-
-    embed.set_image(url="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGh4cHY3Z2o1dWR0eXBsNGdkcWg2ZW44M2g3c3U5emJudzhtZjFrOCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/qvNpPZYqNkRo0c3TDv/giphy.gif")
 
     await channel.send(embed=embed)
 
 
 # ================= CONTROLS =================
-
-        if not staff_role or staff_role not in interaction.user.roles:
-        # ================= CONTROLS =================
 class TicketControls(discord.ui.View):
     def __init__(self, user_id, ticket_type):
         super().__init__(timeout=None)
-        self.claimed_by = None
         self.user_id = user_id
         self.ticket_type = ticket_type
+        self.claimed_by = None
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, emoji="🟢", custom_id="ticket_claim")
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, emoji="🟢", custom_id="claim_btn")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
-        staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
+        role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
+
         if self.claimed_by:
-            await interaction.response.send_message("❌ Already claimed!", ephemeral=True)
-            return
-        if not staff_role or staff_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Only sellers can claim!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ Already claimed", ephemeral=True)
+
+        if not role or role not in interaction.user.roles:
+            return await interaction.response.send_message("❌ Seller only", ephemeral=True)
+
         self.claimed_by = interaction.user
         await interaction.response.send_message(f"✅ Claimed by {interaction.user.mention}")
 
-    @discord.ui.button(label="Add User", style=discord.ButtonStyle.blurple, emoji="👤", custom_id="ticket_add_user")
+    @discord.ui.button(label="Add User", style=discord.ButtonStyle.blurple, emoji="👤", custom_id="add_user_btn")
     async def add_user(self, interaction: discord.Interaction, button: discord.ui.Button):
-        staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-        if not staff_role or staff_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Only sellers can add users!", ephemeral=True)
-            return
-        await interaction.response.send_message("👤 Mention user to add:", ephemeral=True)
+        role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
+
+        if not role or role not in interaction.user.roles:
+            return await interaction.response.send_message("❌ Seller only", ephemeral=True)
+
+        await interaction.response.send_message("👤 Mention the user to add", ephemeral=True)
 
         def check(m):
             return m.author == interaction.user and m.channel == interaction.channel
 
-        msg = await bot.wait_for("message", check=check)
-        if msg.mentions:
-            user = msg.mentions[0]
-            await interaction.channel.set_permissions(user, view_channel=True, send_messages=True)
-            await interaction.channel.send(f"✅ {user.mention} added")
+        try:
+            msg = await bot.wait_for("message", check=check, timeout=60)
+        except asyncio.TimeoutError:
+            return await interaction.followup.send("⏰ Timeout", ephemeral=True)
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket_close")
+        if not msg.mentions:
+            return await interaction.followup.send("❌ No user mentioned", ephemeral=True)
+
+        member = msg.mentions[0]
+
+        await interaction.channel.set_permissions(
+            member,
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True
+        )
+
+        await interaction.followup.send(f"✅ Added {member.mention}", ephemeral=True)
+        await interaction.channel.send(f"👤 {member.mention} has been added to this ticket")
+
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒", custom_id="close_btn")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-        if not staff_role or staff_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Only sellers can close!", ephemeral=True)
-            return
-        await interaction.channel.send("🔒 Closing ticket...")
-        # Remove ticket from open_tickets
+        role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
+
+        if not role or role not in interaction.user.roles:
+            return await interaction.response.send_message("❌ Seller only", ephemeral=True)
+
         if self.user_id in open_tickets and self.ticket_type in open_tickets[self.user_id]:
             open_tickets[self.user_id].remove(self.ticket_type)
             if not open_tickets[self.user_id]:
                 del open_tickets[self.user_id]
+
+        await interaction.response.send_message("🔒 Closing ticket...")
         await interaction.channel.delete()
 
 
@@ -128,25 +137,11 @@ class TicketControls(discord.ui.View):
 class TicketDropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="🛒 Buy Products", description="Purchase items", emoji="🛒"),
-            discord.SelectOption(label="❓ Support", description="Get help", emoji="❓"),
-            discord.SelectOption(label="🤝 Partnership", description="Business deals", emoji="🤝"),
+            discord.SelectOption(label="🛒 Buy Products"),
+            discord.SelectOption(label="❓ Support"),
+            discord.SelectOption(label="🤝 Partnership"),
         ]
-        super().__init__(placeholder="🎫 Choose your ticket type", options=options, custom_id="ticket_dropdown")
-
-    async def callback(self, interaction: discord.Interaction):
-        # existing ticket creation logic remains
-        ...
-
-# ================= DROPDOWN =================
-class TicketDropdown(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="🛒 Buy Products", description="Purchase items"),
-            discord.SelectOption(label="❓ Support", description="Get help"),
-            discord.SelectOption(label="🤝 Partnership", description="Business deals"),
-        ]
-        super().__init__(placeholder="🎫 Choose your ticket type", options=options)
+        super().__init__(placeholder="🎫 Open a Ticket", options=options, custom_id="ticket_dropdown")
 
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -154,60 +149,52 @@ class TicketDropdown(discord.ui.Select):
         ticket_type = self.values[0]
 
         category = discord.utils.get(guild.categories, name="tickets")
-        staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
+        role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
 
-        if not category or not staff_role:
-            await interaction.response.send_message(
-                "❌ Setup error (create 'tickets' category & 'S E L L E R' role)",
-                ephemeral=True
-            )
-            return
+        if not category or not role:
+            return await interaction.response.send_message("❌ Setup missing", ephemeral=True)
 
-        # 🔥 prevent duplicate of same type
         if user.id in open_tickets and ticket_type in open_tickets[user.id]:
-            await interaction.response.send_message(
-                f"❌ You already have an open ticket of type **{ticket_type}**!",
-                ephemeral=True
-            )
-            return
+            return await interaction.response.send_message("❌ Already opened this type", ephemeral=True)
 
-        # Track this ticket
-        if user.id not in open_tickets:
-            open_tickets[user.id] = []
-        open_tickets[user.id].append(ticket_type)
+        open_tickets.setdefault(user.id, []).append(ticket_type)
 
         channel = await guild.create_text_channel(
-            name=f"ticket-{user.id}-{len(open_tickets[user.id])}",
+            name=f"ticket-{user.name}",
             category=category,
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-                staff_role: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                user: discord.PermissionOverwrite(view_channel=True),
+                role: discord.PermissionOverwrite(view_channel=True),
             }
         )
 
         embed = discord.Embed(
-            title=f"🎫 Nᴇxʀʏɴ Ticket",
-            description=f"{user.mention} opened a ticket\n📌 Type: {ticket_type}",
-            color=0x1abc9c
+            title="🎫 Nᴇxʀʏɴ Ticket",
+            description=(
+                f"╭━━━━━━━━━━━━━━━━━━━━╮\n"
+                f"👤 {user.mention}\n"
+                f"📌 Type: {ticket_type}\n"
+                f"╰━━━━━━━━━━━━━━━━━━━━╯\n\n"
+                f"⚡ A seller will assist you shortly"
+            ),
+            color=0x2b2d31
         )
 
         embed.set_image(url="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGh4cHY3Z2o1dWR0eXBsNGdkcWg2ZW44M2g3c3U5emJudzhtZjFrOCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/qvNpPZYqNkRo0c3TDv/giphy.gif")
 
         await channel.send(
-            content=f"{user.mention} {staff_role.mention}",
+            content=f"{user.mention} {role.mention}",
             embed=embed,
             view=TicketControls(user.id, ticket_type)
         )
 
-        await interaction.response.send_message(
-            f"✅ Ticket created: {channel.mention}",
-            ephemeral=True
-        )
+        await interaction.response.send_message(f"✅ Created {channel.mention}", ephemeral=True)
 
         asyncio.create_task(ask_questions(channel, user, ticket_type))
 
 
+# ================= VIEW =================
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -228,13 +215,13 @@ async def panel(ctx):
         title="🎟️ Nᴇxʀʏɴ | ᴄʜᴇᴀᴘᴇsᴛ ᴘʀɪᴄᴇs",
         description=(
             "╭━━━━━━━━━━━━━━━━━━━━╮\n"
-            "💎 **WELCOME TO Nᴇxʀʏɴ SHOP**\n"
+            "💎 PREMIUM STORE PANEL\n"
             "╰━━━━━━━━━━━━━━━━━━━━╯\n\n"
             "🛒 Buy • ❓ Support • 🤝 Deals\n\n"
             "⚡ Fast • Cheap • Trusted\n\n"
-            "👇 Select below to open your ticket"
+            "👇 Open a ticket below"
         ),
-        color=0x1abc9c
+        color=0x2b2d31
     )
 
     embed.set_image(url="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGh4cHY3Z2o1dWR0eXBsNGdkcWg2ZW44M2g3c3U5emJudzhtZjFrOCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/qvNpPZYqNkRo0c3TDv/giphy.gif")
