@@ -16,18 +16,18 @@ MAX_TICKETS = 10
 # ================= QUESTIONS =================
 async def ask_questions(channel, user, ticket_type):
     questions_map = {
-        "🛒 Buy Products": [
+        "buy": [
             "What product do you want?",
             "Quantity?",
             "Payment method?",
             "Extra details?"
         ],
-        "❓ Support": [
+        "support": [
             "What issue?",
             "Send proof if possible",
             "Explain clearly"
         ],
-        "🤝 Partnership": [
+        "partner": [
             "Partnership type?",
             "Your stats?",
             "Details?"
@@ -122,7 +122,7 @@ class TicketControls(discord.ui.View):
             await interaction.response.send_message("❌ Only sellers", ephemeral=True)
             return
 
-        # reduce ticket count
+        # reduce count
         if self.user_id in open_tickets:
             open_tickets[self.user_id] -= 1
             if open_tickets[self.user_id] <= 0:
@@ -132,35 +132,24 @@ class TicketControls(discord.ui.View):
         await interaction.channel.delete()
 
 
-# ================= DROPDOWN =================
-class TicketDropdown(discord.ui.Select):
+# ================= BUTTON PANEL =================
+class TicketButtons(discord.ui.View):
     def __init__(self):
-        options = [
-            discord.SelectOption(label="🛒 Buy Products"),
-            discord.SelectOption(label="❓ Support"),
-            discord.SelectOption(label="🤝 Partnership"),
-        ]
-        super().__init__(
-            placeholder="🎫 Select ticket type",
-            options=options,
-            custom_id="ticket_dropdown"
-        )
+        super().__init__(timeout=None)
 
-    async def callback(self, interaction: discord.Interaction):
+    async def create_ticket(self, interaction, ticket_type, display_name):
         await interaction.response.defer()
 
         guild = interaction.guild
         user = interaction.user
-        ticket_type = self.values[0]
 
         category = discord.utils.get(guild.categories, name="tickets")
         role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
 
         if not category or not role:
-            await interaction.followup.send("❌ Create 'tickets' category + 'S E L L E R' role", ephemeral=True)
+            await interaction.followup.send("❌ Setup missing", ephemeral=True)
             return
 
-        # limit 10 tickets
         count = open_tickets.get(user.id, 0)
         if count >= MAX_TICKETS:
             await interaction.followup.send("❌ Max 10 tickets reached", ephemeral=True)
@@ -173,8 +162,8 @@ class TicketDropdown(discord.ui.Select):
             category=category,
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-                role: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                user: discord.PermissionOverwrite(view_channel=True),
+                role: discord.PermissionOverwrite(view_channel=True),
             }
         )
 
@@ -182,8 +171,8 @@ class TicketDropdown(discord.ui.Select):
             title="🎟️ Nᴇxʀʏɴ Ticket",
             description=(
                 f"{user.mention} opened a ticket\n\n"
-                f"📌 Type: {ticket_type}\n"
-                f"⚡ Wait for seller\n"
+                f"📌 Type: {display_name}\n"
+                f"⚡ Wait for seller"
             ),
             color=0x2b2d31
         )
@@ -200,18 +189,24 @@ class TicketDropdown(discord.ui.Select):
 
         asyncio.create_task(ask_questions(channel, user, ticket_type))
 
+    # ===== BUTTONS =====
+    @discord.ui.button(label="Buy Products", style=discord.ButtonStyle.green, emoji="🛒", custom_id="btn_buy")
+    async def buy(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.create_ticket(interaction, "buy", "🛒 Buy Products")
 
-# ================= VIEW =================
-class TicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(TicketDropdown())
+    @discord.ui.button(label="Support", style=discord.ButtonStyle.blurple, emoji="❓", custom_id="btn_support")
+    async def support(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.create_ticket(interaction, "support", "❓ Support")
+
+    @discord.ui.button(label="Partnership", style=discord.ButtonStyle.gray, emoji="🤝", custom_id="btn_partner")
+    async def partner(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.create_ticket(interaction, "partner", "🤝 Partnership")
 
 
 # ================= READY =================
 @bot.event
 async def on_ready():
-    bot.add_view(TicketView())
+    bot.add_view(TicketButtons())
     print(f"Logged in as {bot.user}")
 
 
@@ -226,14 +221,14 @@ async def panel(ctx):
             "╰━━━━━━━━━━━━━━━━━━━━╯\n\n"
             "🛒 Buy • ❓ Support • 🤝 Deals\n\n"
             "⚡ Fast • Cheap • Trusted\n\n"
-            "👇 Open ticket below"
+            "👇 Click a button below"
         ),
         color=0x2b2d31
     )
 
     embed.set_image(url="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGh4cHY3Z2o1dWR0eXBsNGdkcWg2ZW44M2g3c3U5emJudzhtZjFrOCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/qvNpPZYqNkRo0c3TDv/giphy.gif")
 
-    await ctx.send(embed=embed, view=TicketView())
+    await ctx.send(embed=embed, view=TicketButtons())
 
 
 bot.run(TOKEN)
